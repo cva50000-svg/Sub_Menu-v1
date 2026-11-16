@@ -18,6 +18,8 @@ jobs:
 
     - name: Nastavenie Gradle
       uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.0'
 
     - name: Kompilacia cez Gradle
       working-directory: SubmenuAndroid
