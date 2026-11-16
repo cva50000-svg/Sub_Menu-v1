@@ -16,6 +16,9 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
+    - name: Nastavenie Android SDK
+      uses: android-actions/setup-android@v3
+
     - name: Kompilacia cez Gradle
       working-directory: SubmenuAndroid
       run: |
