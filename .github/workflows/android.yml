@@ -16,11 +16,11 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Nastavenie Android SDK
-      uses: android-actions/setup-android@v3
-
     - name: Kompilacia cez Gradle
       working-directory: SubmenuAndroid
+      env:
+        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      load: true
       run: |
         chmod +x gradlew
         ./gradlew assembleDebug
