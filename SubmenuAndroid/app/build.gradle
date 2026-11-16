@@ -3,14 +3,30 @@ plugins {
 }
 
 android {
-    namespace 'sk.submenu'
-    compileSdk 35
+    namespace 'com.example.submenuandroid'
+    compileSdk 34
 
     defaultConfig {
-        applicationId 'sk.submenu'
-        minSdk 23
-        targetSdk 35
+        applicationId "com.example.submenuandroid"
+        minSdk 24
+        targetSdk 34
         versionCode 1
-        versionName '1.0'
+        versionName "1.0"
     }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
 }
