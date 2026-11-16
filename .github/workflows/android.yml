@@ -16,7 +16,7 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Kompilacia cez Gradle
+    - name: Nastavenie prav pre gradlew a kompilacia
       working-directory: SubmenuAndroid
       run: |
         chmod +x gradlew
