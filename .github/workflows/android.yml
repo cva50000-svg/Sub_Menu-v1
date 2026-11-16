@@ -11,12 +11,12 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Nastavenie Java JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Nastavenie prav pre gradlew a kompilacia
+    - name: Kompilacia cez Gradle
       working-directory: SubmenuAndroid
       run: |
         chmod +x gradlew
