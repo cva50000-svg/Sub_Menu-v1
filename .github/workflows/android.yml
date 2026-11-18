@@ -1,34 +1,41 @@
 name: Build Android APK
 
+# Urcuje, kedy sa ma tento skript sputit (pri kazdom pushnuti kodu alebo pull requeste)
 on: [push, pull_request]
 
 jobs:
   build:
+    # Definuje operacny system virtualneho servera na GitHube (tu je to najnovsie Ubuntu)
     runs-on: ubuntu-latest
 
     steps:
-    - name: Stiahnutie kodu
-      uses: actions/checkout@v4
+      # Stiahne aktualny zdrojovy kod tvojho repozitara do pracovneho prostredia servera
+      - name: Stiahnutie kodu
+        uses: actions/checkout@v4
 
-    - name: Nastavenie Java JDK 17
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'temurin'
-        java-version: '17'
+      # Nainstaluje konkretnu verziu Java JDK (tu verziu 17), ktoru Android projekt potrebuje
+      - name: Nastavenie Java JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    - name: Nastavenie Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.0'
+      # Pripravi nastroj Gradle v pozadovanej verzii (tu verzia 8.0) na kompilaciu
+      - name: Nastavenie Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.0'
 
-    - name: Kompilacia cez Gradle
-      working-directory: SubmenuAndroid
-      env:
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      run: gradle assembleDebug
+      # Spusti samotny preklad kodu v konkretnom priecinku projektu na finalnu release verziu
+      - name: Kompilacia cez Gradle
+        working-directory: SubmenuAndroid
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: gradle assembleRelease
 
-    - name: Ulozenie APK ako artefaktu
-      uses: actions/upload-artifact@v4
-      with:
-        name: debug-apk
-        path: SubmenuAndroid/app/build/outputs/apk/debug/app-debug.apk
+      # Zbali a ulozi vygenerovany APK subor ako artefakt, ktory si mozes stiahnut z webu GitHubu
+      - name: Ulozenie APK ako artefaktu
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: SubmenuAndroid/app/build/outputs/apk/release/app-release.apk
