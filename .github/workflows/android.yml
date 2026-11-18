@@ -30,5 +30,5 @@ jobs:
     - name: Ulozenie APK ako artefaktu
       uses: actions/upload-artifact@v4
       with:
-         name: Sub_Menu_v1
-        path: dist/Sub_Menu_v1.apk
+        name: Sub_Menu_v1
+        path: SubmenuAndroid/app/build/outputs/apk/debug/app-debug.apk
