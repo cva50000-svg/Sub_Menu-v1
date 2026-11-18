@@ -37,5 +37,5 @@ jobs:
       - name: Ulozenie APK ako artefaktu
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: SubmenuAndroid/app/build/outputs/apk/release/app-release.apk
+          name: SubMenu-apk
+          path: SubmenuAndroid/app/build/outputs/apk/release/SupMenu.apk
