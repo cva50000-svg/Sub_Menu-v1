@@ -242,7 +242,7 @@ public class MainActivity extends Activity {
 
         // Vyska riadku nastavena na 54dp (povodne 72dp) a medzera pod riadkom na 6dp (povodne 10dp)
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(54));
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
         rowParams.bottomMargin = dp(6);
         content.addView(row, rowParams);
 
