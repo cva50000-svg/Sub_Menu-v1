@@ -1,7 +1,12 @@
-plugins {
-    id 'com.android.application' version '7.4.2' apply false
-}
-
-task clean(type: Delete) {
-    delete rootProject.buildDir
+buildTypes {
+    release {
+        minifyEnabled true
+        shrinkResources true
+        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+    }
+    debug {
+        minifyEnabled true
+        shrinkResources true
+        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+    }
 }
