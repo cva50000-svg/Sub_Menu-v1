@@ -22,7 +22,6 @@ jobs:
         gradle-version: '8.0'
 
     - name: Kompilacia cez Gradle
-      working-directory: SubmenuAndroid
       env:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       run: gradle assembleDebug
@@ -31,4 +30,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: Sub_Menu_v1
-        path: SubmenuAndroid/app/build/outputs/apk/debug/app-debug.apk
+        path: app/build/outputs/apk/debug/Sub_Menu_v1.apk
