@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# Urcuje, kedy sa ma tento skript sputit (pri kazdom pushnuti kodu alebo pull requeste)
+# Urcuje, kedy sa ma tento skript spustit (pri kazdom pushnuti kodu alebo pull requeste)
 on: [push, pull_request]
 
 jobs:
@@ -33,9 +33,15 @@ jobs:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: gradle assembleRelease
 
-      # Zbali a ulozi vygenerovany APK subor ako artefakt, ktory si mozes stiahnut z webu GitHubu
+      # Najde vygenerovany .apk subor (relativne od korena repozitara) a skopiruje ho ako submenu.apk
+      - name: Premenovanie vystupneho APK
+        run: |
+          APK_FILE=$(find . -name "*.apk" | head -n 1)
+          cp "$APK_FILE" submenu.apk
+
+      # Zbali a ulozi submenu.apk ako artefakt, ktory si mozes stiahnut z webu GitHubu
       - name: Ulozenie APK ako artefaktu
         uses: actions/upload-artifact@v4
         with:
-          name: SubMenu-apk
-          path: SubmenuAndroid/app/build/outputs/apk/release/SupMenu.apk
+          name: submenu-apk
+          path: submenu.apk
