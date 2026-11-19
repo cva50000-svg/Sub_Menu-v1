@@ -1,352 +1,475 @@
-package sk.submenu;
+package sk.menu.launcher;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.util.TypedValue;
 import android.view.Gravity;
-import android.widget.Button;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
+
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 public class MainActivity extends Activity {
 
-    // Pocet slotov na obrazovke (9 poloziek)
-    private static final int SLOT_COUNT = 9;
-
-    // Nazov suboru pre ukladanie nastaveni (SharedPreferences)
-    private static final String PREFS = "submenu_settings";
-
-    // Predvolene zobrazovane nazvy pre jednotlive sloty (ak aplikacia este nie je priradena)
-    private static final String[] DEFAULT_LABELS = {
-        "Nastavenie", "Chrome", "Gmail", "Telefon", "Spravy",
-        "Kontakty", "Hodiny", "Kalendar", "Poznamky"
-    };
-
-    // Predvolene systemove baliky (package name) pre prve spustenie
-    // Prazdne retazce "" sa doplnia automaticky vyhladavanim podla nazvu v initializeDefaults()
-    private static final String[] DEFAULT_PACKAGES = {
-        "com.android.settings",
-        "com.android.chrome",
-        "com.google.android.gm",
-        "",
-        "",
-        "",
-        "",
-        "",
-        ""
-    };
+    private static final int SLOT_COUNT = 12;
+    private static final String PREFS_NAME = "menu_launcher_prefs";
+    private static final String KEY_INITIALIZED = "initialized_v2";
+    private static final String KEY_SLOT_PREFIX = "slot_pkg_";
 
     private SharedPreferences prefs;
-    private LinearLayout content;
-    private final List<AppEntry> launchableApps = new ArrayList<>();
+    private PackageManager pm;
+    private boolean editMode = false;
 
-    // Struktura pre uchovanie udajov o nainstalovanej aplikacii
-    private static class AppEntry {
-        String label;        // Zobrazovany nazov aplikacie
-        String packageName;  // Systemovy identifikator balika
-        Intent launchIntent; // Intent na spustenie aplikacie
-        Drawable icon;       // Originalna ikona aplikacie
-
-        AppEntry(String l, String p, Intent i, Drawable ic) {
-            label = l;
-            packageName = p;
-            launchIntent = i;
-            icon = ic;
-        }
-    }
+    private TextView btnEditMode;
+    private TextView tvSubtitle;
+    private final LinearLayout[] slotCards = new LinearLayout[SLOT_COUNT];
+    private final ImageView[] slotIcons = new ImageView[SLOT_COUNT];
+    private final TextView[] slotTitles = new TextView[SLOT_COUNT];
+    private final TextView[] slotBadges = new TextView[SLOT_COUNT];
 
     @Override
-    public void onCreate(Bundle state) {
-        super.onCreate(state);
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        loadApps();
-        initializeDefaults();
-        buildScreen();
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        pm = getPackageManager();
+
+        initDefaultSlotsIfNeeded();
+        setContentView(buildMainLayout());
+        refreshSlotsUI();
     }
 
-    // Nacita vsetky spustitelne aplikacie zo systemu a zoradi ich podla abecedy
-    private void loadApps() {
-        launchableApps.clear();
-        Intent query = new Intent(Intent.ACTION_MAIN, null);
-        query.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> found = getPackageManager().queryIntentActivities(query, 0);
-        for (ResolveInfo ri : found) {
-            String pkg = ri.activityInfo.packageName;
-            String label = ri.loadLabel(getPackageManager()).toString();
-            Drawable icon = ri.loadIcon(getPackageManager());
-            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-            if (launch != null && !pkg.equals(getPackageName())) {
-                launchableApps.add(new AppEntry(label, pkg, launch, icon));
+    private void initDefaultSlotsIfNeeded() {
+        if (prefs.getBoolean(KEY_INITIALIZED, false)) {
+            return;
+        }
+
+        List<AppItem> installed = loadLaunchableApps();
+
+        // Preddefinovane budu iba prve 3 pozicie, zvysok ostane prazdny
+        String[][] defaultQueries = new String[][]{
+                {"gmail", "gm"},
+                {"chrome"},
+                {"setting", "settings", "nastavenia"}
+        };
+
+        SharedPreferences.Editor editor = prefs.edit();
+        Set<String> usedPackages = new HashSet<>();
+
+        for (int i = 0; i < defaultQueries.length && i < SLOT_COUNT; i++) {
+            String foundPkg = findBestMatch(installed, defaultQueries[i], usedPackages);
+            if (foundPkg != null) {
+                editor.putString(KEY_SLOT_PREFIX + i, foundPkg);
+                usedPackages.add(foundPkg);
             }
         }
-        Collections.sort(launchableApps, Comparator.comparing(a -> a.label.toLowerCase(Locale.ROOT)));
+
+        editor.putBoolean(KEY_INITIALIZED, true);
+        editor.apply();
     }
 
-    // Pri prvom spusteni priradi predvolene aplikacie do slotov
-    private void initializeDefaults() {
-        for (int i = 0; i < SLOT_COUNT; i++) {
-            String key = "slot_" + i;
-            if (prefs.contains(key)) continue;
-
-            // Najprv skusi presnu zhodu podla package name
-            String match = findPackage(DEFAULT_PACKAGES[i]);
-
-            // Ak sa balik nenasiel (rozni vyrobcovia maju rozne nazvy balikov), hlada podla nazvu ikony
-            if (match == null) {
-                switch (i) {
-                    case 0: // Nastavenie
-                        match = findByLabels("Nastaveni", "Settings");
-                        break;
-                    case 1: // Chrome
-                        match = findByLabels("Chrome");
-                        break;
-                    case 2: // Gmail
-                        match = findByLabels("Gmail");
-                        break;
-                    case 3: // Telefon
-                        match = findByLabels("Telefon", "Phone", "Dialer");
-                        break;
-                    case 4: // Spravy
-                        match = findByLabels("Spravy", "Messages", "SMS");
-                        break;
-                    case 5: // Kontakty
-                        match = findByLabels("Kontakty", "Contacts");
-                        break;
-                    case 6: // Hodiny
-                        match = findByLabels("Hodiny", "Clock");
-                        break;
-                    case 7: // Kalendar
-                        match = findByLabels("Kalendar", "Calendar");
-                        break;
-                    case 8: // Poznamky
-                        match = findByLabels("Poznamky", "Notes", "Keep");
-                        break;
-                }
-            }
-            prefs.edit().putString(key, match == null ? "" : match).apply();
-        }
-    }
-
-    // Vyhlada aplikaciu podla presneho nazvu balika
-    private String findPackage(String pkg) {
-        if (pkg == null || pkg.isEmpty()) return null;
-        for (AppEntry a : launchableApps) {
-            if (a.packageName.equals(pkg)) return pkg;
-        }
-        return null;
-    }
-
-    // Vyhlada aplikaciu podla jedneho alebo viacerych klucovych slov v nazve (ignoruje diakritiku zakladnym sposobom a velkost pismen)
-    private String findByLabels(String... keywords) {
+    private String findBestMatch(List<AppItem> apps, String[] keywords, Set<String> used) {
         for (String kw : keywords) {
             String lowerKw = kw.toLowerCase(Locale.ROOT);
-            for (AppEntry a : launchableApps) {
-                String cleanLabel = stripAccents(a.label).toLowerCase(Locale.ROOT);
-                if (cleanLabel.contains(lowerKw)) {
-                    return a.packageName;
+            for (AppItem app : apps) {
+                if (used.contains(app.packageName)) continue;
+                if (app.labelLower.contains(lowerKw) || app.packageLower.contains(lowerKw)) {
+                    return app.packageName;
                 }
             }
         }
         return null;
     }
 
-    // Odstrani zakladnu slovensku diakritiku pre spolahlivejsie vyhladavanie nazvov (napr. Spravy vs Správy)
-    private String stripAccents(String s) {
-        return s.replace("á", "a").replace("ä", "a").replace("č", "c").replace("ď", "d")
-                .replace("é", "e").replace("í", "i").replace("ĺ", "l").replace("ľ", "l")
-                .replace("ň", "n").replace("ó", "o").replace("ô", "o").replace("ŕ", "r")
-                .replace("š", "s").replace("ť", "t").replace("ú", "u").replace("ý", "y")
-                .replace("ž", "z")
-                .replace("Á", "A").replace("Ä", "A").replace("Č", "C").replace("Ď", "D")
-                .replace("É", "E").replace("Í", "I").replace("Ĺ", "L").replace("Ľ", "L")
-                .replace("Ň", "N").replace("Ó", "O").replace("Ô", "O").replace("Ŕ", "R")
-                .replace("Š", "S").replace("Ť", "T").replace("Ú", "U").replace("Ý", "Y")
-                .replace("Ž", "Z");
-    }
+    private View buildMainLayout() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(dp(8), dp(8), dp(8), dp(8));
 
-    // Vrati priradenu aplikaciu pre dany slot
-    private AppEntry getSelected(int slot) {
-        String pkg = prefs.getString("slot_" + slot, "");
-        for (AppEntry a : launchableApps) {
-            if (a.packageName.equals(pkg)) return a;
-        }
-        return null;
-    }
+        root.setBackgroundColor(Color.parseColor("#CC080E1A"));
+        root.setOnClickListener(v -> finish());
 
-    // Vytvori alebo prekresli celu obrazovku
-    private void buildScreen() {
-        getWindow().getDecorView().setBackgroundColor(Color.rgb(16, 24, 32));
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(10), dp(10), dp(10), dp(12));
+        panel.setClickable(true);
 
-        if (content == null) {
-            ScrollView scroll = new ScrollView(this);
-            content = new LinearLayout(this);
-            content.setOrientation(LinearLayout.VERTICAL);
-            // Odsadenie celeho zoznamu od okrajov displeja (lavy, horny, pravy, dolny)
-            content.setPadding(dp(16), dp(16), dp(16), dp(16));
-            scroll.addView(content);
-            setContentView(scroll);
-        } else {
-            content.removeAllViews();
-        }
+        GradientDrawable panelBg = new GradientDrawable();
+        panelBg.setColor(Color.parseColor("#0F192B"));
+        panelBg.setCornerRadius(dp(22));
+        panelBg.setStroke(dp(2), Color.parseColor("#28F0E8"));
+        panel.setBackground(panelBg);
 
-        // Nadpis obrazovky
-        TextView heading = new TextView(this);
-        heading.setText("SUBMENU");
-        heading.setTextColor(Color.WHITE);
-        heading.setTextSize(22);
-        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        heading.setGravity(Gravity.CENTER);
-        heading.setPadding(0, dp(2), 0, dp(14));
-        content.addView(heading);
+        root.addView(panel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
 
-        // Vykreslenie vsetkych 9 slotov
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(4), 0, dp(4), dp(6));
+
+        LinearLayout titleBox = new LinearLayout(this);
+        titleBox.setOrientation(LinearLayout.VERTICAL);
+
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("MENU");
+        tvTitle.setTextColor(Color.parseColor("#E2F8FF"));
+        tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        tvTitle.setTypeface(Typeface.DEFAULT_BOLD);
+
+        tvSubtitle = new TextView(this);
+        tvSubtitle.setText("Podrzte ikonu pre zmenu");
+        tvSubtitle.setTextColor(Color.parseColor("#8CA3C0"));
+        tvSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+
+        titleBox.addView(tvTitle);
+        titleBox.addView(tvSubtitle);
+
+        btnEditMode = new TextView(this);
+        btnEditMode.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        btnEditMode.setTypeface(Typeface.DEFAULT_BOLD);
+        btnEditMode.setPadding(dp(8), dp(4), dp(8), dp(4));
+        btnEditMode.setOnClickListener(v -> toggleEditMode());
+        styleEditButton(false);
+
+        header.addView(titleBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        header.addView(btnEditMode);
+        panel.addView(header);
+
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(3);
+        grid.setRowCount(4);
+
         for (int i = 0; i < SLOT_COUNT; i++) {
-            addSlot(i);
+            final int slotIndex = i;
+
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setGravity(Gravity.CENTER);
+            card.setPadding(dp(4), dp(6), dp(4), dp(6));
+
+            GridLayout.LayoutParams cardParams = new GridLayout.LayoutParams();
+            cardParams.width = 0;
+            cardParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            cardParams.columnSpec = GridLayout.spec(i % 3, 1f);
+            cardParams.rowSpec = GridLayout.spec(i / 3);
+            cardParams.setMargins(dp(2), dp(2), dp(2), dp(2));
+
+            ImageView iconView = new ImageView(this);
+            LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+            iconParams.bottomMargin = dp(2);
+            iconView.setLayoutParams(iconParams);
+
+            TextView nameView = new TextView(this);
+            nameView.setTextColor(Color.parseColor("#F1F5F9"));
+            nameView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            nameView.setTypeface(Typeface.DEFAULT_BOLD);
+            nameView.setGravity(Gravity.CENTER);
+            nameView.setMaxLines(1);
+            nameView.setEllipsize(TextUtils.TruncateAt.END);
+
+            TextView badgeView = new TextView(this);
+            badgeView.setText("Zmenit");
+            badgeView.setTextColor(Color.parseColor("#F59E0B"));
+            badgeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+            badgeView.setTypeface(Typeface.DEFAULT_BOLD);
+            badgeView.setPadding(0, dp(1), 0, 0);
+            badgeView.setVisibility(View.GONE);
+
+            card.addView(iconView);
+            card.addView(nameView);
+            card.addView(badgeView);
+
+            card.setOnClickListener(v -> handleSlotClick(slotIndex));
+            card.setOnLongClickListener(v -> {
+                openAppPickerDialog(slotIndex);
+                return true;
+            });
+
+            slotCards[i] = card;
+            slotIcons[i] = iconView;
+            slotTitles[i] = nameView;
+            slotBadges[i] = badgeView;
+
+            grid.addView(card, cardParams);
         }
 
-        // Spodna napoveda
-        TextView footer = new TextView(this);
-        footer.setText("Vyber aplikaciu. Nastavenia zmenis cez UPRAVIT.");
-        footer.setTextColor(Color.LTGRAY);
-        footer.setTextSize(11);
-        footer.setGravity(Gravity.CENTER);
-        footer.setPadding(0, dp(12), 0, dp(4));
-        content.addView(footer);
+        panel.addView(grid);
+        return root;
     }
 
-    // Vykresli jeden uzsi riadok (slot)
-    private void addSlot(final int slot) {
-        AppEntry selected = getSelected(slot);
+    private void toggleEditMode() {
+        editMode = !editMode;
+        styleEditButton(editMode);
+        tvSubtitle.setText(editMode ? "Tuknite na poziciu pre vyber" : "Podrzte ikonu pre zmenu");
+        refreshSlotsUI();
+    }
 
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        // Vnutorne odsadenie v ramci jedneho riadku (zmensene pre uzsi vzhlad)
-        row.setPadding(dp(12), dp(6), dp(8), dp(6));
-        // Farba karty slotu a zaoblenie rohov
-        row.setBackground(roundRect(Color.rgb(29, 42, 54), dp(12)));
-
-        // Vyska riadku nastavena na 54dp (povodne 72dp) a medzera pod riadkom na 6dp (povodne 10dp)
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
-        rowParams.bottomMargin = dp(6);
-        content.addView(row, rowParams);
-
-        // Ikona aplikacie (velkost 36x36 dp, povodne 48x48 dp)
-        if (selected != null && selected.icon != null) {
-            ImageView icon = new ImageView(this);
-            icon.setImageDrawable(selected.icon);
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+    private void styleEditButton(boolean active) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(10));
+        if (active) {
+            bg.setColor(Color.parseColor("#F59E0B"));
+            btnEditMode.setText("HOTOVO");
+            btnEditMode.setTextColor(Color.parseColor("#0B1322"));
         } else {
-            TextView icon = new TextView(this);
-            icon.setText("+");
-            icon.setTextColor(Color.WHITE);
-            icon.setTextSize(20);
-            icon.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            icon.setGravity(Gravity.CENTER);
-            icon.setBackground(roundRect(Color.rgb(0, 121, 107), dp(10)));
-            row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+            bg.setColor(Color.parseColor("#1B2D4B"));
+            bg.setStroke(dp(1), Color.parseColor("#38BDF8"));
+            btnEditMode.setText("UPRAVIT");
+            btnEditMode.setTextColor(Color.parseColor("#38BDF8"));
         }
-
-        // Nazov aplikacie v slote
-        TextView name = new TextView(this);
-        name.setText(selected == null ? DEFAULT_LABELS[slot] + " (nevybrana)" : selected.label);
-        name.setTextColor(Color.WHITE);
-        name.setTextSize(15);
-        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        name.setPadding(dp(12), 0, dp(4), 0);
-        row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-
-        // Tlacidlo UPRAVIT
-        Button edit = new Button(this);
-        edit.setText("UPRAVIT");
-        edit.setTextSize(10);
-        edit.setTextColor(Color.rgb(128, 203, 196));
-        edit.setAllCaps(true);
-        edit.setBackgroundColor(Color.TRANSPARENT);
-        edit.setMinimumHeight(0);
-        edit.setMinHeight(0);
-        edit.setPadding(dp(8), dp(4), dp(8), dp(4));
-        row.addView(edit);
-        edit.setOnClickListener(v -> showAppPicker(slot));
-
-        // Kliknutie na riadok spusti aplikaciu
-        row.setOnClickListener(v -> launchSlot(slot));
+        btnEditMode.setBackground(bg);
     }
 
-    // Otvori dialogove okno na vyber aplikacie pre zvoleny slot
-    private void showAppPicker(final int slot) {
-        final List<AppEntry> choices = new ArrayList<>();
-        choices.add(new AppEntry("--- Nevybrate ---", "", null, null));
-        choices.addAll(launchableApps);
-
-        String[] labels = new String[choices.size()];
-        for (int i = 0; i < choices.size(); i++) {
-            labels[i] = choices.get(i).label;
+    private void styleCard(LinearLayout card, boolean isAssigned) {
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setCornerRadius(dp(12));
+        if (editMode) {
+            cardBg.setColor(Color.parseColor("#1D2B42"));
+            cardBg.setStroke(dp(2), Color.parseColor("#F59E0B"));
+        } else if (isAssigned) {
+            cardBg.setColor(Color.parseColor("#172742"));
+            cardBg.setStroke(dp(1), Color.parseColor("#2B4C7E"));
+        } else {
+            cardBg.setColor(Color.parseColor("#111D30"));
+            cardBg.setStroke(dp(1), Color.parseColor("#334155"));
         }
-
-        new AlertDialog.Builder(this)
-            .setTitle("Vyber aplikaciu: " + DEFAULT_LABELS[slot])
-            .setItems(labels, (dialog, which) -> {
-                prefs.edit().putString("slot_" + slot, choices.get(which).packageName).apply();
-                buildScreen();
-            })
-            .setNegativeButton("Zrusit", null)
-            .show();
+        card.setBackground(cardBg);
     }
 
-    // Spusti zvolenu aplikaciu a ukonci Submenu
-    private void launchSlot(int slot) {
-        AppEntry selected = getSelected(slot);
-        if (selected == null) {
-            showAppPicker(slot);
+    private void refreshSlotsUI() {
+        for (int i = 0; i < SLOT_COUNT; i++) {
+            String pkg = prefs.getString(KEY_SLOT_PREFIX + i, null);
+            boolean assigned = false;
+
+            if (pkg != null) {
+                try {
+                    ApplicationInfo info = pm.getApplicationInfo(pkg, 0);
+                    slotIcons[i].setImageDrawable(pm.getApplicationIcon(info));
+                    slotTitles[i].setText(pm.getApplicationLabel(info));
+                    slotTitles[i].setTextColor(Color.parseColor("#F1F5F9"));
+                    assigned = true;
+                } catch (PackageManager.NameNotFoundException e) {
+                    prefs.edit().remove(KEY_SLOT_PREFIX + i).apply();
+                }
+            }
+
+            if (!assigned) {
+                slotIcons[i].setImageResource(android.R.drawable.ic_input_add);
+                slotIcons[i].setColorFilter(Color.parseColor("#38BDF8"));
+                slotTitles[i].setText("Vybrat");
+                slotTitles[i].setTextColor(Color.parseColor("#94A3B8"));
+            } else {
+                slotIcons[i].clearColorFilter();
+            }
+
+            slotBadges[i].setVisibility(editMode ? View.VISIBLE : View.GONE);
+            styleCard(slotCards[i], assigned);
+        }
+    }
+
+    private void handleSlotClick(int slotIndex) {
+        if (editMode) {
+            openAppPickerDialog(slotIndex);
             return;
         }
-        Intent launch = getPackageManager().getLaunchIntentForPackage(selected.packageName);
-        if (launch == null) {
-            new AlertDialog.Builder(this)
-                .setMessage("Aplikacia uz nie je dostupna.")
-                .setPositiveButton("OK", null)
-                .show();
+
+        String pkg = prefs.getString(KEY_SLOT_PREFIX + slotIndex, null);
+        if (pkg == null) {
+            openAppPickerDialog(slotIndex);
             return;
         }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            startActivity(launch);
+
+        Intent launchIntent = pm.getLaunchIntentForPackage(pkg);
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(launchIntent);
             finish();
-        } catch (Exception e) {
-            new AlertDialog.Builder(this)
-                .setMessage("Aplikaciu sa nepodarilo spustit.")
-                .setPositiveButton("OK", null)
-                .show();
+        } else {
+            Toast.makeText(this, "Aplikaciu nemožno spustit", Toast.LENGTH_SHORT).show();
+            openAppPickerDialog(slotIndex);
         }
     }
 
-    // Vytvori zaobleny obdlznik pre pozadie prvkov
-    private GradientDrawable roundRect(int color, int radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(radius);
-        return d;
+    private void openAppPickerDialog(int slotIndex) {
+        List<AppItem> allApps = loadLaunchableApps();
+        List<AppItem> filteredApps = new ArrayList<>(allApps);
+
+        LinearLayout dialogLayout = new LinearLayout(this);
+        dialogLayout.setOrientation(LinearLayout.VERTICAL);
+        dialogLayout.setPadding(dp(14), dp(10), dp(14), dp(6));
+
+        EditText searchInput = new EditText(this);
+        searchInput.setHint("Hladat...");
+        searchInput.setSingleLine(true);
+        dialogLayout.addView(searchInput);
+
+        ListView listView = new ListView(this);
+        LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(300)
+        );
+        listParams.topMargin = dp(6);
+        dialogLayout.addView(listView, listParams);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Pozicia " + (slotIndex + 1))
+                .setView(dialogLayout)
+                .setNegativeButton("Zrusit", null)
+                .setNeutralButton("Vymazat", (d, which) -> {
+                    prefs.edit().remove(KEY_SLOT_PREFIX + slotIndex).apply();
+                    refreshSlotsUI();
+                })
+                .create();
+
+        ArrayAdapter<AppItem> adapter = new ArrayAdapter<AppItem>(this, 0, filteredApps) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                LinearLayout row;
+                ImageView icon;
+                TextView text;
+
+                if (convertView == null) {
+                    row = new LinearLayout(MainActivity.this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.setPadding(dp(6), dp(8), dp(6), dp(8));
+
+                    icon = new ImageView(MainActivity.this);
+                    LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(32), dp(32));
+                    ip.rightMargin = dp(10);
+                    icon.setLayoutParams(ip);
+                    icon.setId(android.R.id.icon);
+
+                    text = new TextView(MainActivity.this);
+                    text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                    text.setId(android.R.id.text1);
+
+                    row.addView(icon);
+                    row.addView(text);
+                } else {
+                    row = (LinearLayout) convertView;
+                    icon = row.findViewById(android.R.id.icon);
+                    text = row.findViewById(android.R.id.text1);
+                }
+
+                AppItem item = getItem(position);
+                if (item != null) {
+                    if (item.cachedIcon == null) {
+                        item.cachedIcon = item.resolveInfo.loadIcon(pm);
+                    }
+                    icon.setImageDrawable(item.cachedIcon);
+                    text.setText(item.label);
+                }
+                return row;
+            }
+        };
+
+        listView.setAdapter(adapter);
+
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String q = s.toString().toLowerCase(Locale.ROOT).trim();
+                filteredApps.clear();
+                for (AppItem app : allApps) {
+                    if (app.labelLower.contains(q) || app.packageLower.contains(q)) {
+                        filteredApps.add(app);
+                    }
+                }
+                adapter.notifyDataSetChanged();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            AppItem selected = filteredApps.get(position);
+            prefs.edit().putString(KEY_SLOT_PREFIX + slotIndex, selected.packageName).apply();
+            refreshSlotsUI();
+            dialog.dismiss();
+        });
+
+        dialog.show();
     }
 
-    // Prepocet DP na realne pixely displeja
+    private List<AppItem> loadLaunchableApps() {
+        Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+
+        List<ResolveInfo> resolveInfos = pm.queryIntentActivities(mainIntent, 0);
+        List<AppItem> result = new ArrayList<>(resolveInfos.size());
+        Set<String> seenPackages = new HashSet<>();
+        String myPackage = getPackageName();
+
+        for (ResolveInfo ri : resolveInfos) {
+            String pkg = ri.activityInfo.packageName;
+            if (pkg.equals(myPackage)) {
+                // Ponechavame unikatnost
+            }
+            if (seenPackages.contains(pkg)) continue;
+            seenPackages.add(pkg);
+            String label = ri.loadLabel(pm).toString();
+            result.add(new AppItem(label, pkg, ri));
+        }
+
+        Collections.sort(result, (a, b) -> a.label.compareToIgnoreCase(b.label));
+        return result;
+    }
+
     private int dp(int value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+        return Math.round(TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
+        ));
+    }
+
+    private static class AppItem {
+        final String label;
+        final String labelLower;
+        final String packageName;
+        final String packageLower;
+        final ResolveInfo resolveInfo;
+        Drawable cachedIcon;
+
+        AppItem(String label, String packageName, ResolveInfo resolveInfo) {
+            this.label = label;
+            this.labelLower = label.toLowerCase(Locale.ROOT);
+            this.packageName = packageName;
+            this.packageLower = packageName.toLowerCase(Locale.ROOT);
+            this.resolveInfo = resolveInfo;
+        }
     }
 }
