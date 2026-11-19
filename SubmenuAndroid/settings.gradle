@@ -1,16 +1,30 @@
+// Nastavenia pre vyhladavanie a nacitavanie samotnych Gradle pluginov (napr. Android Gradle Plugin).
 pluginManagement {
     repositories {
+        // Oficialny repozitar Google pre Android pluginy a kniznice.
         google()
+        // Hlavny verejny Maven repozitar pre Java/Kotlin/Android zavislosti.
         mavenCentral()
+        // Oficialny repozitar komunity a Gradle pre dalsie Gradle pluginy.
         gradlePluginPortal()
     }
 }
+
+// Centralizovane nastavenie repozitarov pre zavislosti vsetkych modulov projektu.
 dependencyResolutionManagement {
+    // Zakazuje definovat repozitare priamo v jednotlivych build.gradle suboroch modulov;
+    // pri poruseni build zlyha (vynucuje centralnu spravu cez settings.gradle).
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // Repozitar Google pre Android zavislosti.
         google()
+        // Repozitar Maven Central pre ostatne kniznice.
         mavenCentral()
     }
 }
+
+// Nazov korenového projektu v Gradle (zvycajne zodpoveda nazvu priecinka projektu).
 rootProject.name = "SubmenuAndroid"
+
+// Zaregistruje podmodul ':app' (nachadza sa v podpriecinku app/).
 include ':app'
