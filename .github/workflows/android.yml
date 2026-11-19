@@ -5,7 +5,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    # Definuje operacny system virtualneho servera na GitHube (tu je to najnovsie Ubuntu)
+    # Definuje operacny system virtualneho servera na GitHube (najnovsie Ubuntu)
     runs-on: ubuntu-latest
 
     steps:
@@ -13,35 +13,46 @@ jobs:
       - name: Stiahnutie kodu
         uses: actions/checkout@v4
 
-      # Nainstaluje konkretnu verziu Java JDK (tu verziu 17), ktoru Android projekt potrebuje
+      # Nainstaluje konkretnu verziu Java JDK (verzia 17), ktoru Android projekt potrebuje
       - name: Nastavenie Java JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Pripravi nastroj Gradle v pozadovanej verzii (tu verzia 8.0) na kompilaciu
+      # Pripravi nastroj Gradle v pozadovanej verzii (verzia 8.0) na kompilaciu
       - name: Nastavenie Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.0'
 
-      # Spusti samotny preklad kodu v konkretnom priecinku projektu na finalnu release verziu
-      - name: Kompilacia cez Gradle
-        working-directory: SubmenuAndroid
+      # Najde priecinok projektu (podla suboru build.gradle) a spusti release kompilaciu
+      - name: Kompilacia cez Gradle v najdenom priecinku
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        run: gradle assembleRelease
+        run: |
+          GRADLE_FILE=$(find . -maxdepth 3 -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "Chyba: Nenasiel sa ziadny build.gradle subor."
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$GRADLE_FILE")
+          echo "Pouzivam priecinok projektu: $PROJECT_DIR"
+          gradle -p "$PROJECT_DIR" assembleRelease
 
-      # Najde vygenerovany .apk subor (relativne od korena repozitara) a skopiruje ho ako submenu.apk
-      - name: Premenovanie vystupneho APK
+      # Najde vygenerovany .apk subor a skopiruje ho s cislom behu workflow v nazve
+      - name: Premenovanie vystupneho APK podla cisla behu
         run: |
           APK_FILE=$(find . -name "*.apk" | head -n 1)
-          cp "$APK_FILE" submenu.apk
+          if [ -z "$APK_FILE" ]; then
+            echo "Chyba: Nenasiel sa ziadny vygenerovany APK subor."
+            exit 1
+          fi
+          cp "$APK_FILE" "sub_menu_v_${{ github.run_number }}.apk"
 
-      # Zbali a ulozi submenu.apk ako artefakt, ktory si mozes stiahnut z webu GitHubu
+      # Zbali a ulozi APK subor s cislom behu ako artefakt na stiahnutie
       - name: Ulozenie APK ako artefaktu
         uses: actions/upload-artifact@v4
         with:
-          name: submenu-apk
-          path: submenu.apk
+          name: sub_menu_v_${{ github.run_number }}
+          path: sub_menu_v_${{ github.run_number }}.apk
