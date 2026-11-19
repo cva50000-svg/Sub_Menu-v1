@@ -1,32 +1,52 @@
+// Aplikuje Android Gradle Plugin pre modul aplikacie (verzia je definovana v korenovom projekte).
 plugins {
     id 'com.android.application'
 }
 
+// Hlavny blok konfiguracie Android buildu pre tento modul.
 android {
+    // Balickovy nazov pouzity pre generovanu triedu R a zdroje (vyzadovane v novsich verziach AGP).
     namespace 'com.example.submenuandroid'
+    // Verzia Android SDK, proti ktorej sa kompiluje zdrojovy kod a zdroje (API 34 = Android 14).
     compileSdk 34
 
+    // Predvolene nastavenia aplikacie, ktore sa pouziju, ak ich neprepise konkretny buildType alebo flavor.
     defaultConfig {
+        // Unikatny identifikator aplikacie na zariadeni a v obchode (nemusi byt identicky s namespace).
         applicationId "com.example.submenuandroid"
+        // Minimalna podporovana verzia Androidu (API 24 = Android 7.0 Nougat; pri starsich verziach nezbehne).
         minSdk 24
+        // Cielova verzia Androidu, pre ktoru bola aplikacia testovana a optimalizovana.
         targetSdk 34
+        // Celociselny interny kod verzie pouzivany pri aktualizaciach (musi rast).
         versionCode 1
+        // Retazec verzie zobrazeny pouzivatelovi.
         versionName "1.0"
     }
 
+    // Konfiguracia typov zostavenia (napr. debug, release).
     buildTypes {
         release {
+            // Vypina R8/ProGuard skracovanie, obfuskaciu a optimalizaciu kodu pre release build.
             minifyEnabled false
+            // Zoznam pravidiel pre R8/ProGuard (predvolene optimalizovane pravidla SDK + vlastne pravidla v proguard-rules.pro).
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // Nastavenie kompatibility Java jazyka pre kompilaciu.
     compileOptions {
+        // Verzia Java zdrojoveho kodu, ktoru kompilator akceptuje.
         sourceCompatibility JavaVersion.VERSION_1_8
+        // Verzia bajtkodu Java, ktora sa vygeneruje.
         targetCompatibility JavaVersion.VERSION_1_8
     }
 }
 
+// Deklaracia externych kniznic a zavislosti modulu.
 dependencies {
+    // Kniznica AndroidX AppCompat pre spatnu kompatibilitu UI komponentov a aktivit.
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    // Kniznica Material Components (Material Design prvky).
     implementation 'com.google.android.material:material:1.9.0'
 }
