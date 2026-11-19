@@ -1,3 +1,7 @@
+// Blok pre konfiguraciu pluginov pouzivanych v projekte (zvycajne v root build.gradle subore)
 plugins {
+    // Deklaruje Android Gradle Plugin (AGP) vo verzii 8.1.0 potrebny na zostavenie Android aplikacie.
+    // 'apply false' znamena, ze plugin sa iba nacita do pamate (classpath), ale neaplikuje sa priamo 
+    // na tento korenovy projekt. Aktivuje sa az v konkretnom module aplikacie (napr. v app/build.gradle).
     id 'com.android.application' version '8.1.0' apply false
 }
